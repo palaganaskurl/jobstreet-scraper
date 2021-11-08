@@ -12,7 +12,7 @@ from requests import Session, HTTPError
 from requests_futures.sessions import FuturesSession
 from requests_html import HTMLSession
 
-from configs import job_description_keywords
+from configs import all_jobs_and_skills
 
 logging.basicConfig(
     filename=f'{uuid4().hex}.log',
@@ -31,10 +31,9 @@ class JobStreetScraper:
         self.requests_session = Session()
         self.futures_session = FuturesSession()
 
-        self.jobs = [
-            'Cloud Architect Azure',
-            # 'Cloud Architect AWS',
-        ]
+        self.jobs = list(all_jobs_and_skills.keys())
+        # Uncomment this for testing
+        # self.jobs = self.jobs[13:]
         self.jobs_data = {}
         self.logger = logging.getLogger('jobstreet-logger')
         self.logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -80,25 +79,27 @@ class JobStreetScraper:
         extracted_keywords = []
 
         # Raise KeyError for debugging
-        __keywords = job_description_keywords[job_name]
+        __keywords = all_jobs_and_skills[job_name]
 
         for keyword in __keywords:
             split_keyword = keyword.split()
 
-            if all(k in split_job_description for k in split_keyword):
-                extracted_keywords.append(keyword)
+            if all(k.strip() in split_job_description for k in split_keyword):
+                extracted_keywords.append(keyword.strip())
 
         return ', '.join(extracted_keywords)
 
     def export(self):
         for job_name, job_data in self.jobs_data.items():
             job_data_data_frame = DataFrame(data=job_data)
-            job_data_data_frame.to_excel(f'{job_name}.xlsx', index=False)
+            job_data_data_frame.to_excel(f'job_data/{job_name}-copy.xlsx', index=False)
 
     def scrape(self):
         jobs_data = {}
 
-        for job in self.jobs:
+        for i, job in enumerate(self.jobs):
+            self.logger.info(f'Job {i + 1} / {len(self.jobs)}')
+
             jobs_data[job] = []
             job_param = job.replace(' ', '-').lower()
 
@@ -108,13 +109,19 @@ class JobStreetScraper:
 
             pagination = r.html.find('select', first=True)
             pagination_options = pagination.find('option')
-            last_page = int(pagination_options[-1].attrs.get('value'))
+
+            try:
+                last_page = int(pagination_options[-1].attrs.get('value'))
+            except ValueError:
+                last_page = 1
+
             self.logger.info(f'{job} Last Page {last_page}')
 
-            last_page = 2
+            # Uncomment this for testing
+            # last_page = 2
 
-            for i in range(1, last_page + 1):
-                current_url = self.url.format(job=job_param, page=i)
+            for j in range(1, last_page + 1):
+                current_url = self.url.format(job=job_param, page=j)
                 self.logger.info(f'Current URL {current_url}')
 
                 get_page_content_start_time = time.time()
@@ -122,7 +129,13 @@ class JobStreetScraper:
                 self.logger.info(f'Time elapsed getting page content {time.time() - get_page_content_start_time}')
 
                 job_listing = r.html.find('#jobList', first=True)
-                search_queries = job_listing.find('div')
+
+                try:
+                    search_queries = job_listing.find('div')
+                except AttributeError:
+                    self.logger.info(f'Error on Current URL {current_url}')
+
+                    continue
 
                 jobstreet_api_futures = []
 
@@ -174,16 +187,13 @@ class JobStreetScraper:
                     })
 
                 self.logger.info(
-                    f'Time elapsed page getting all job data {i} {time.time() - processing_job_data_start_time}'
+                    f'Time elapsed page getting all job data {j} {time.time() - processing_job_data_start_time}'
                 )
 
             self.jobs_data = jobs_data
 
-            # from pprint import pprint
-            # pprint(jobs_data)
-
-            # with open('test.json', 'w', encoding='utf-8') as f:
-            #     json.dump(jobs_data, f, indent=4)
+            job_data_data_frame = DataFrame(data=jobs_data[job])
+            job_data_data_frame.to_excel(f'job_data/{job}.xlsx', index=False)
 
 
 if __name__ == '__main__':

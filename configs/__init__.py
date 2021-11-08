@@ -1,5 +1,1 @@
-from .cloud_engineering import cloud_computing_engineering
-
-job_description_keywords = {
-    **cloud_computing_engineering
-}
+from .jobs_and_skills import all_jobs_and_skills
